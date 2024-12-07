@@ -12,7 +12,7 @@ import (
 const (
 	statusDownloading = "downloading"
 
-	reasonStatusNotDownloading = "Download status is not downloading"
+	reasonStatusNotDownloading = "Download stalled"
 	reasonNotEnoughTime        = "Download started recently, threshold: %s, actual: %s"
 	reasonDownloadTimeout      = "Download timed out, threshold: %s, actual: %s"
 	reasonSlowDownloadSpeed    = "Average speed is below %v/s: %v"
@@ -71,7 +71,7 @@ func (c *CheckRR) Check() error {
 
 func (c *CheckRR) IsDownloadStuck(download client.Download) (bool, string, error) {
 	if download.Status != statusDownloading {
-		return false, reasonStatusNotDownloading, nil
+		return true, reasonStatusNotDownloading, nil
 	}
 
 	addedTime, err := time.Parse(time.RFC3339, download.Added)
