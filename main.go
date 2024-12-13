@@ -28,7 +28,7 @@ func main() {
 
 	var checkrrs []*checkrr.CheckRR
 	for _, c := range config.Clients {
-		cl := client.NewClientRR(c.Host, c.APIKey, c.Options)
+		cl := client.NewClientRR(c.Host, c.APIKey, c.Name, c.Options)
 		check := checkrr.NewCheckRR(c.Name, cl, c.Conditions)
 		checkrrs = append(checkrrs, check)
 	}

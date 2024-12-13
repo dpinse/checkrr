@@ -8,35 +8,50 @@ import (
 	"net/http"
 	"strconv"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/soheilrt/checkrr/pkg/config"
 )
 
 const (
-	queuePath           = "/api/v3/queue"
-	queueDeleteBulkPath = "/api/v3/queue/bulk"
+	queuePathV1           = "/api/v1/queue"
+	queueDeleteBulkPathV1 = "/api/v1/queue/bulk"
+	queuePathV3           = "/api/v3/queue"
+	queueDeleteBulkPathV3 = "/api/v3/queue/bulk"
 )
 
 type ClientRR struct {
+	name    string
 	key     string
 	host    string
 	options config.Options
 }
 
-func NewClientRR(host, apiKey string, options config.Options) *ClientRR {
+func NewClientRR(host, apiKey string, name string, options config.Options) *ClientRR {
 	return &ClientRR{
+		name:    name,
 		key:     apiKey,
 		host:    host,
 		options: options,
 	}
 }
 
+func (c *ClientRR) getQueuePath() string {
+	if c.name == "lidarr" {
+		return queuePathV1
+	}
+	return queuePathV3
+}
+
+func (c *ClientRR) getQueueDeletePath() string {
+	if c.name == "lidarr" {
+		return queueDeleteBulkPathV1
+	}
+	return queueDeleteBulkPathV3
+}
+
 func (c *ClientRR) FetchDownloads() ([]Download, error) {
 	var downloads []Download
 
 	for page := 1; ; page++ {
-		log.Debugf("Fetching download page %d...", page)
 		pageDownloads, totalRecords, err := c.fetchDownloadPage(page)
 		if err != nil {
 			return nil, err
@@ -53,6 +68,7 @@ func (c *ClientRR) FetchDownloads() ([]Download, error) {
 
 func (c *ClientRR) fetchDownloadPage(page int) ([]Download, int, error) {
 	client := &http.Client{}
+	queuePath := c.getQueuePath() // Dynamically choose the path
 
 	req, err := http.NewRequest("GET", c.host+queuePath, nil)
 	if err != nil {
@@ -60,7 +76,7 @@ func (c *ClientRR) fetchDownloadPage(page int) ([]Download, int, error) {
 	}
 	req.Header.Set("X-Api-Key", c.key)
 
-	// Get query values, add "page" param, and set the Host's RawQuery
+	// Add page query parameter
 	q := req.URL.Query()
 	q.Add("page", strconv.Itoa(page))
 	req.URL.RawQuery = q.Encode() // Important: this actually sets the query string
@@ -89,16 +105,14 @@ func (c *ClientRR) fetchDownloadPage(page int) ([]Download, int, error) {
 }
 
 func (c *ClientRR) DeleteFromQueue(ids []int) error {
-	// Create a new HTTP client
 	client := &http.Client{}
+	deletePath := c.getQueueDeletePath() // Dynamically choose the delete path
 
-	// Prepare the request
-	req, err := http.NewRequest("DELETE", c.host+queueDeleteBulkPath, nil)
+	req, err := http.NewRequest("DELETE", c.host+deletePath, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
 	req.Header.Set("X-Api-Key", c.key)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -108,7 +122,6 @@ func (c *ClientRR) DeleteFromQueue(ids []int) error {
 	q.Add("skipRedownload", strconv.FormatBool(c.options.SkipRedownload))
 	req.URL.RawQuery = q.Encode() // Important: this actually sets the query string
 
-	// Convert IDs to string and marshal the body
 	body, err := json.Marshal(struct {
 		Ids []int `json:"ids"`
 	}{Ids: ids})
@@ -116,17 +129,14 @@ func (c *ClientRR) DeleteFromQueue(ids []int) error {
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Attach the body to the request
 	req.Body = io.NopCloser(bytes.NewReader(body))
 
-	// Perform the HTTP request
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check for unsuccessful HTTP status codes
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
